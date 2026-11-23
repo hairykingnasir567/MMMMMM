@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Orbit Playground</title>
+<style>
+:root{--bg:#070914;--panel:#10152b;--ink:#eef1ff;--mute:#9aa3c7;--acc:#ffb84d;--line:#26305a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#070914;--panel:#10152b;--ink:#eef1ff;--mute:#9aa3c7;--line:#26305a}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100%}
+header{padding:14px 18px 6px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+h1{font:700 26px/1 Georgia,"Times New Roman",serif;margin:0;letter-spacing:.5px}
+header span{color:var(--mute);font-size:14px}
+#stage{position:relative;flex:1;min-height:0}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+#card{position:absolute;right:14px;top:10px;width:min(300px,calc(100% - 28px));background:color-mix(in srgb,var(--panel) 92%,transparent);border:1px solid var(--line);border-radius:14px;padding:14px 16px;backdrop-filter:blur(6px)}
+#card h2{margin:0 0 4px;font:700 22px Georgia,serif}
+#card p{margin:6px 0;font-size:14px;line-height:1.45;color:var(--ink)}
+#card .fact{color:var(--acc)}
+#card dl{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:8px 0 0;font-size:13px}
+#card dt{color:var(--mute)}#card dd{margin:0}
+#bar{display:flex;gap:10px 16px;flex-wrap:wrap;align-items:center;padding:10px 16px 12px;border-top:1px solid var(--line);background:var(--panel)}
+#bar label{font-size:13px;color:var(--mute);display:flex;align-items:center;gap:8px}
+button{background:#1b2347;color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font:inherit;font-size:13px;cursor:pointer}
+button:hover{border-color:var(--acc)}button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button.on{background:var(--acc);color:#1a1200;border-color:var(--acc)}
+input[type=range]{accent-color:var(--acc);width:130px}
+#weight{font-size:13px;color:var(--mute);margin-left:auto}
+#weight b{color:var(--acc)}
+@media (max-width:600px){#card{top:auto;bottom:10px}}
+</style>
+</head>
+<body>
+<div id="app">
+<header><h1>Orbit Playground</h1><span>Click or double-click a planet. Drag to tilt, scroll to zoom. Keys: arrows, F, C, space.</span></header>
+<div id="chips" style="display:flex;gap:6px;flex-wrap:wrap;padding:0 16px 8px"></div>
+<div id="stage">
+<canvas id="c"></canvas>
+<div id="card" aria-live="polite"></div>
+</div>
+<div id="bar">
+<button id="pause">Pause</button>
+<label>Speed <input id="spd" type="range" min="0" max="10" step="0.1" value="2"></label>
+<button id="orb" class="on">Orbits</button>
+<button id="lab" class="on">Labels</button>
+<button id="com">Throw a comet</button>
+<button id="fol" onclick="toggleFollow()">Follow</button>
+<button id="drp">Drop rocks</button>
+<button id="grav">Gravity mode</button>
+<span id="weight">Your weight on <b id="wp">Earth</b>: <input id="kg" type="number" value="60" min="1" max="300" style="width:60px;background:#1b2347;color:#eef1ff;border:1px solid #26305a;border-radius:8px;padding:4px"> kg = <b id="wv">60</b> kg</span>
+</div>
+</div>
+<script>
+const P=[
+{n:"Mercury",r:4,d:60,p:88,c:"#b5a79a",g:.38,t:"167°C",day:"59 Earth days",moons:0,f:"A year here lasts only 88 Earth days, but one sunrise to the next takes 176."},
+{n:"Venus",r:8,d:90,p:225,c:"#e8c27a",g:.91,t:"464°C",day:"243 Earth days",moons:0,f:"Hotter than Mercury, and it spins backwards. The Sun rises in the west."},
+{n:"Earth",r:8.5,d:128,p:365,c:"#4f9dff",g:1,t:"15°C",day:"24 hours",moons:1,f:"The only world we know with life, and mostly covered in water."},
+{n:"Mars",r:6,d:165,p:687,c:"#e0613c",g:.38,t:"-65°C",day:"24.6 hours",moons:2,f:"Home to Olympus Mons, a volcano about 2.5 times taller than Everest."},
+{n:"Jupiter",r:19,d:240,p:4333,c:"#d9a36c",g:2.53,t:"-110°C",day:"10 hours",moons:95,f:"Its Great Red Spot is a storm wider than Earth that has raged for centuries."},
+{n:"Saturn",r:16,d:310,p:10759,c:"#ead9a0",g:1.07,t:"-140°C",day:"10.7 hours",moons:146,ring:1,f:"Light enough that it would float in a big enough bathtub."},
+{n:"Uranus",r:11,d:370,p:30687,c:"#8fe3e6",g:.89,t:"-195°C",day:"17 hours",moons:28,f:"It rolls around the Sun on its side, tilted about 98 degrees."},
+{n:"Neptune",r:11,d:420,p:60190,c:"#4a6cff",g:1.14,t:"-200°C",day:"16 hours",moons:16,f:"Winds here reach over 2,000 km/h, the fastest in the solar system."}
+];
+const cv=document.getElementById('c'),x=cv.getContext('2d');
+let hov=null,follow=false,drop=false,SX=0,SY=0,cam={x:0,y:0},W,H,dpr,tilt=.45,zoom=1,t=0,paused=false,showO=true,showL=true,grav=false,sel=null,drag=null;
+const stars=Array.from({length:220},()=>({x:Math.random(),y:Math.random(),s:Math.random()*1.4+.3,k:Math.random()*6}));
+let comets=[];
+P.forEach((p,i)=>{p.a=Math.random()*6.28;p.px=0;p.py=0});
+function size(){dpr=devicePixelRatio||1;W=cv.clientWidth;H=cv.clientHeight;cv.width=W*dpr;cv.height=H*dpr;x.setTransform(dpr,0,0,dpr,0,0)}
+addEventListener('resize',size);size();
+function sc(){return Math.min(W,H*1.7)/960*zoom}
+function proj(px,py){return[W/2+px-cam.x,H/2+py*tilt-cam.y]}
+function glow(cx,cy,r,col,a){const g=x.createRadialGradient(cx,cy,0,cx,cy,r);g.addColorStop(0,col);g.addColorStop(1,'rgba(0,0,0,0)');x.globalAlpha=a;x.fillStyle=g;x.beginPath();x.arc(cx,cy,r,0,7);x.fill();x.globalAlpha=1}
+const belt=Array.from({length:320},()=>({a:Math.random()*6.28,d:188+Math.random()*26,z:Math.random()*1.7+.6}));
+const BANDS={Jupiter:['#c9955f','#efd9b5','#b5703f','#e8c9a0','#a9643a','#dcb98c','#c28a58','#e6cfa6'],Saturn:['#d8c27d','#f0e2b0','#c9b070','#ead9a0','#bfa660','#f2e6bb'],Uranus:['#9fe8ea','#80d6da','#a8eef0','#8ddfe2'],Neptune:['#3b5bff','#5f80ff','#2f46d6','#4a6cff']};
+function drawPlanet(p,X,Y,R){
+ const dx=SX-X,dy=SY-Y,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d,n=p.n,sh=(t*R*.15)%(2*R);
+ x.save();x.beginPath();x.arc(X,Y,R,0,7);x.clip();
+ x.fillStyle=n==='Earth'?'#1f5fbf':p.c;x.fillRect(X-R,Y-R,2*R,2*R);
+ const bn=BANDS[n];
+ if(bn){const k=bn.length,h=2*R/k;for(let i=0;i<k;i++){x.fillStyle=bn[i];x.beginPath();x.moveTo(X-R,Y-R+i*h);for(let j=0;j<=8;j++)x.lineTo(X-R+j*R/4,Y-R+i*h+Math.sin(j*1.7+i*2+t*.4)*h*.14);x.lineTo(X+R,Y+R);x.lineTo(X-R,Y+R);x.fill()}
+  if(n==='Jupiter'){x.fillStyle='rgba(196,69,45,.85)';x.beginPath();x.ellipse(X-R+((sh+R*.5)%(2*R)),Y+R*.3,R*.3,R*.16,0,0,7);x.fill()}}
+ if(n==='Earth'){x.fillStyle='#3f9a4a';[[.2,-.2,.5,.3],[.7,.3,.4,.25],[1.3,-.4,.35,.3],[1.6,.2,.5,.35]].forEach(q=>{x.beginPath();x.ellipse(X-R+((q[0]*R+sh*1.5)%(2*R)),Y+q[1]*R,q[2]*R,q[3]*R,0,0,7);x.fill()});
+  x.fillStyle='rgba(255,255,255,.5)';[[.1,.1,.6,.1],[.9,-.5,.5,.08],[1.5,.5,.6,.09]].forEach(q=>{x.beginPath();x.ellipse(X-R+((q[0]*R+sh*2.2)%(2*R)),Y+q[1]*R,q[2]*R,q[3]*R,0,0,7);x.fill()});
+  x.fillStyle='#fff';x.fillRect(X-R,Y-R,2*R,R*.18);x.fillRect(X-R,Y+R*.84,2*R,R*.2)}
+ if(n==='Mars'){x.fillStyle='#8f3a20';[[-.3,.2,.4,.2],[.35,-.15,.35,.2],[.1,.55,.3,.12]].forEach(q=>{x.beginPath();x.ellipse(X+q[0]*R,Y+q[1]*R,q[2]*R,q[3]*R,0,0,7);x.fill()});x.fillStyle='#fff';x.fillRect(X-R,Y-R,2*R,R*.2)}
+ if(n==='Venus'){x.lineWidth=R*.2;for(let i=0;i<6;i++){x.strokeStyle=i%2?'rgba(255,240,190,.5)':'rgba(170,110,40,.4)';x.beginPath();for(let j=0;j<=8;j++)x.lineTo(X-R+j*R/4,Y-R*.8+i*R*.32+Math.sin(j+i*2+t*.5)*R*.12);x.stroke()}}
+ if(n==='Mercury'){[[-.3,-.2,.2],[.3,.25,.24],[.1,-.5,.13],[-.5,.4,.15],[.55,-.15,.11]].forEach(q=>{x.fillStyle='rgba(60,50,45,.55)';x.beginPath();x.arc(X+q[0]*R,Y+q[1]*R,q[2]*R,0,7);x.fill();x.strokeStyle='rgba(255,245,235,.35)';x.lineWidth=1;x.stroke()})}
+ const g=x.createRadialGradient(X+ux*R*.6,Y+uy*R*.6,R*.1,X+ux*R*.6,Y+uy*R*.6,R*2.1);
+ g.addColorStop(0,'rgba(255,255,255,.2)');g.addColorStop(.45,'rgba(0,0,0,0)');g.addColorStop(.75,'rgba(0,0,12,.65)');g.addColorStop(1,'rgba(0,0,12,.93)');
+ x.fillStyle=g;x.fillRect(X-R,Y-R,2*R,2*R);x.restore();
+ const at=n==='Earth'?'#6fb8ff':n==='Venus'?'#ffd98a':n==='Mars'?'#ff9a6b':p.c;
+ x.save();x.shadowColor=at;x.shadowBlur=R*.9;x.strokeStyle=at;x.globalAlpha=.55;x.lineWidth=1.5;x.beginPath();x.arc(X,Y,R,0,7);x.stroke();x.restore()}
+function frame(){
+ if(follow&&sel){cam.x+=(sel.px-cam.x)*.08;cam.y+=(sel.py*tilt-cam.y)*.08;if(zoom<2)zoom+=(2.2-zoom)*.06}else{cam.x*=.92;cam.y*=.92}
+ const s=sc(),spd=+document.getElementById('spd').value;
+ if(!paused)t+=spd*.016;
+ x.fillStyle='#070914';x.fillRect(0,0,W,H);
+ stars.forEach(q=>{x.globalAlpha=.4+.5*Math.sin(t*.3+q.k);x.fillStyle='#fff';x.fillRect(q.x*W,q.y*H,q.s,q.s)});x.globalAlpha=1;
+ // sun
+ const[cx,cy]=proj(0,0);SX=cx;SY=cy;
+ glow(cx,cy,70*s+30,'#ffb84d',.55);glow(cx,cy,36*s+14,'#fff2c0',1);
+ const sr=22*s+8;x.lineCap='round';for(let i=0;i<16;i++){const a=i*.4+t*.15,L=sr*(1.2+.3*Math.sin(t*1.3+i*2.1));x.strokeStyle='rgba(255,170,60,.4)';x.lineWidth=3;x.beginPath();x.moveTo(cx+Math.cos(a)*sr*.9,cy+Math.sin(a)*sr*.9);x.lineTo(cx+Math.cos(a)*L,cy+Math.sin(a)*L);x.stroke()}
+ const sg=x.createRadialGradient(cx,cy,0,cx,cy,sr);sg.addColorStop(0,'#fffbe0');sg.addColorStop(.6,'#ffcf5a');sg.addColorStop(1,'#ff8a1f');x.fillStyle=sg;x.beginPath();x.arc(cx,cy,sr,0,7);x.fill();
+ x.fillStyle='rgba(255,120,20,.35)';for(let i=0;i<7;i++){const a=i*.9+t*.2,r=sr*.5*Math.abs(Math.sin(i*3.1+t*.3));x.beginPath();x.arc(cx+Math.cos(a)*r,cy+Math.sin(a)*r,sr*.08,0,7);x.fill()}
+ // orbits
+ if(showO){x.strokeStyle='rgba(150,165,230,.22)';x.lineWidth=1;P.forEach(p=>{x.beginPath();x.ellipse(cx,cy,p.d*s,p.d*s*tilt,0,0,7);x.stroke()})}
+ x.fillStyle='rgba(190,170,150,.75)';belt.forEach(b=>{const a=b.a+t*.03,q=proj(Math.cos(a)*b.d*s,Math.sin(a)*b.d*s);x.fillRect(q[0],q[1],b.z,b.z)});
+ // planets sorted by depth
+ const items=P.map(p=>{if(!paused)p.a+=(2*Math.PI/p.p)*spd*.9*(grav?1:1);const px=Math.cos(p.a)*p.d*s,py=Math.sin(p.a)*p.d*s;p.px=px;p.py=py;return p}).sort((a,b)=>a.py-b.py);
+ items.forEach(p=>{
+  const[X,Y]=proj(p.px,p.py),R=p.r*s*1.3+2;p.X=X;p.Y=Y;p.R=R;
+  if(p.ring){x.strokeStyle='rgba(234,217,160,.7)';x.lineWidth=R*.35;x.beginPath();x.ellipse(X,Y,R*1.9,R*1.9*tilt*.7,-.3,Math.PI,Math.PI*2);x.stroke()}
+  drawPlanet(p,X,Y,R);
+  
+  if(p.ring){x.strokeStyle='rgba(234,217,160,.8)';x.lineWidth=R*.35;x.beginPath();x.ellipse(X,Y,R*1.9,R*1.9*tilt*.7,-.3,0,Math.PI);x.stroke()}
+  if(p.n==="Earth"){const ma=t*6,mx=X+Math.cos(ma)*R*2.2,my=Y+Math.sin(ma)*R*2.2*tilt;x.fillStyle='#ccc';x.beginPath();x.arc(mx,my,R*.25+.5,0,7);x.fill()}
+  if(p.n==='Jupiter'||p.n==='Saturn'){for(let i=0;i<(p.n==='Jupiter'?4:2);i++){const ma=t*(4-i*.8)+i*1.7,rr=R*(p.ring?2.6:1.7)+i*R*.35;x.fillStyle=['#e8d8a8','#9aa7b0','#fff','#c9a27a'][i];x.beginPath();x.arc(X+Math.cos(ma)*rr,Y+Math.sin(ma)*rr*tilt,R*.09+.8,0,7);x.fill()}}
+  if(p===hov&&p!==sel){x.strokeStyle='rgba(255,255,255,.6)';x.lineWidth=1;x.beginPath();x.arc(X,Y,R+6,0,7);x.stroke()}
+  if(p===sel){x.strokeStyle='#ffb84d';x.lineWidth=2;x.beginPath();x.arc(X,Y,R+7+Math.sin(t*3)*2,0,7);x.stroke()}
+  if(showL){x.fillStyle='rgba(238,241,255,.85)';x.font='12px Trebuchet MS,sans-serif';x.textAlign='center';x.fillText(p.n,X,Y+R+16)}
+ });
+ // comets
+ comets=comets.filter(c=>c.life>0);
+ comets.forEach(c=>{
+  const dx=-c.x,dy=-c.y,d=Math.hypot(dx,dy)+1,f=(grav?9000:5000)/(d*d);
+  if(!paused){c.vx+=dx/d*f*spd*.3;c.vy+=dy/d*f*spd*.3;c.x+=c.vx*spd*.3;c.y+=c.vy*spd*.3;if(!c.keep)c.life-=.0007*spd+.0001;c.tr.push([c.x,c.y]);if(c.tr.length>70)c.tr.shift()}
+  c.tr.forEach((q,i)=>{const[a,b]=proj(q[0]*s,q[1]*s);x.globalAlpha=i/c.tr.length*.8;x.fillStyle='#bfe9ff';x.beginPath();x.arc(a,b,1+i/c.tr.length*2.5,0,7);x.fill()});x.globalAlpha=1;
+  const[a,b]=proj(c.x*s,c.y*s);glow(a,b,12,'#fff',1);
+  if(d<25)c.life=0;
+ });
+ requestAnimationFrame(frame)}
+function info(p){
+ sel=p;const k=+document.getElementById('kg').value||60;
+ document.getElementById('wp').textContent=p.n;document.getElementById('wv').textContent=(k*p.g).toFixed(1);
+ document.getElementById('card').innerHTML=`<h2>${p.n}</h2><p class="fact">${p.f}</p><dl><dt>Year</dt><dd>${p.p.toLocaleString()} Earth days</dd><dt>Day</dt><dd>${p.day}</dd><dt>Temp</dt><dd>${p.t}</dd><dt>Moons</dt><dd>${p.moons}</dd><dt>Gravity</dt><dd>${p.g}x Earth</dd></dl><button onclick="toggleFollow()" style="margin-top:10px">Follow this planet</button>`}
+function home(){document.getElementById('card').innerHTML=`<h2>Pick a world</h2><p>Click any planet to read its story. Then try Gravity mode and throw a comet at the Sun.</p>`}
+home();
+document.getElementById('kg').oninput=()=>{if(sel)info(sel)};
+function pos(e){const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]}
+cv.addEventListener('pointerdown',e=>{drag={y:e.clientY,t:tilt,m:false};cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag){const[mx,my]=pos(e);hov=P.find(p=>Math.hypot(p.X-mx,p.Y-my)<Math.max(p.R+10,18))||null;cv.style.cursor=hov?'pointer':drop?'copy':'crosshair';return}const dy=e.clientY-drag.y;if(Math.abs(dy)>4)drag.m=true;tilt=Math.max(.12,Math.min(1,drag.t+dy/400))});
+cv.addEventListener('pointerup',e=>{
+ if(drag&&!drag.m){const[mx,my]=pos(e);let hit=null;P.forEach(p=>{if(Math.hypot(p.X-mx,p.Y-my)<Math.max(p.R+10,18))hit=p});hit?info(hit):(drop?spawn(mx,my):(sel=null,follow=false,$('fol').classList.remove('on'),home()))}
+ drag=null});
+cv.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.5,Math.min(2.5,zoom*(e.deltaY<0?1.08:.92)))},{passive:false});
+const $=id=>document.getElementById(id);
+function toggleFollow(){if(!sel)info(P[2]);follow=!follow;$('fol').classList.toggle('on',follow)}
+function spawn(mx,my){const s=sc(),wx=(mx-(W/2-cam.x))/s,wy=(my-(H/2-cam.y))/(s*tilt),d=Math.hypot(wx,wy);if(d<40)return;const spd=+$('spd').value||1,v=.9*Math.sqrt((grav?9000:5000)*.3/(.09*spd*d));if(comets.length>40)comets.shift();comets.push({x:wx,y:wy,vx:-wy/d*v,vy:wx/d*v,tr:[],life:1,keep:1})}
+const ch=$('chips');P.forEach(p=>{const b=document.createElement('button');b.textContent=p.n;b.style.borderLeft='10px solid '+p.c;b.onclick=()=>{info(p);follow=true;$('fol').classList.add('on')};ch.appendChild(b)});
+$('drp').onclick=e=>{drop=!drop;e.target.classList.toggle('on',drop);cv.style.cursor=drop?'copy':'crosshair'};
+cv.addEventListener('dblclick',()=>{if(hov){info(hov);follow=true;$('fol').classList.add('on')}});
+addEventListener('keydown',e=>{const k=e.key;if(e.target.tagName==='INPUT')return;if(k===' '){e.preventDefault();$('pause').click()}else if(k==='ArrowRight'||k==='ArrowLeft'){const i=sel?P.indexOf(sel):-1;info(P[(i+(k==='ArrowRight'?1:-1)+P.length)%P.length])}else if(k==='f')toggleFollow();else if(k==='c')$('com').click()});
+$('pause').onclick=e=>{paused=!paused;e.target.textContent=paused?'Play':'Pause';e.target.classList.toggle('on',paused)};
+$('orb').onclick=e=>{showO=!showO;e.target.classList.toggle('on',showO)};
+$('lab').onclick=e=>{showL=!showL;e.target.classList.toggle('on',showL)};
+$('grav').onclick=e=>{grav=!grav;e.target.classList.toggle('on',grav)};
+$('com').onclick=()=>{const a=Math.random()*6.28,d=520,v=1.4+Math.random();comets.push({x:Math.cos(a)*d,y:Math.sin(a)*d,vx:-Math.sin(a)*v*1.2+Math.cos(a)*-.3,vy:Math.cos(a)*v*1.2+Math.sin(a)*-.3,tr:[],life:1})};
+frame();
+</script>
+</body>
+</html>
